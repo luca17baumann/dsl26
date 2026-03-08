@@ -21,6 +21,12 @@ res = client.chat.completions.create(
     stream=True,
 )
 
+response = ""
 for chunk in res:
     if len(chunk.choices) > 0 and chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end="", flush=True)
+        content = chunk.choices[0].delta.content
+        response += content 
+        print(content, end="", flush=True)
+        
+with open("response.md", "w") as f:
+    f.write(f"# Prompt\n\n{your_prompt}\n\n---\n\n# Response\n\n{response}\n")
