@@ -1,0 +1,60 @@
+# WildChat Augmentation Configuration
+
+# Responder models - one is randomly sampled per request
+responders:
+  - name: "model-a"
+    base_url: "http://172.28.32.80:30000"
+    api_key: "EMPTY"
+    model: "zai-org/GLM-4.6"
+  - name: "model-b"
+    base_url: "http://172.28.32.52:30000"
+    api_key: "EMPTY"
+    model: "openai/gpt-oss-120b"
+  - name: "model-c"
+    base_url: "http://172.28.32.200:30000"
+    api_key: "EMPTY"
+    model: "deepseek-ai/DeepSeek-V3.1"
+
+# Judge model - evaluates if response makes sense
+judge:
+  base_url: "http://172.28.33.20:30000"
+  api_key: "EMPTY"
+  model: "Qwen/Qwen3-235B-A22B-Instruct-2507"
+
+# Generation parameters
+generation:
+  max_tokens: 2048
+  temperature: 0.3
+  top_p: 0.95
+
+# Judge parameters
+judge_generation:
+  max_tokens: 1024
+  temperature: 0.1
+  top_p: 1.0
+
+# Adaptation parameters (for consistency check and response adaptation)
+adaptation_generation:
+  max_tokens: 8192
+  temperature: 0.3
+  top_p: 0.95
+
+# Dataset settings
+dataset:
+  name: "allenai/WildChat-1M"
+  split: "train"
+  num_samples: 20000  # number of samples to process
+
+# Processing settings
+processing:
+  concurrency: 10  # number of parallel requests
+  seed: 1337
+  batch_size: 50  # for progress reporting
+  max_adaptations: 2  # max attempts to adapt response per turn
+  max_retries: 3  # max retries if response generation fails
+  max_conv_turns: 3  # max conversation turns to process (0 = no limit)
+
+# Output settings
+output:
+  path: "outputs/responses_29_01.jsonl"
+  save_every: 1000  # save checkpoint every N responses
