@@ -288,13 +288,17 @@ async def process_conversation(
         retry_count = 0
 
         while response_text is None and retry_count < max_retries:
+            print(f"[{responder['name']}] Turn {turn_idx}: Generating response (attempt {retry_count + 1})...", flush=True)
             response_text, response_error = await call_api(
                 session, semaphore, responder, gen_config, messages,
                 error_prefix=f"RESPONDER:{responder['name']}",
                 is_judge=False,
             )
             if response_text is None:
+                print(f"[{responder['name']}] Error: {response_error}. Retrying...", flush=True)
                 retry_count += 1
+            else:
+                print(f"[{responder['name']}] Turn {turn_idx}: Generation successful! Length: {len(response_text)} chars", flush=True)
 
         turn_result = {
             "turn": turn_idx,
@@ -329,6 +333,7 @@ async def process_conversation(
             adaptation_count = 0
 
             while adaptation_count < max_adaptations:
+                print(f"[{responder['name']}] Turn {turn_idx}: Running judge consistency check...", flush=True)
                 # Check if response fits with next user message
                 judge_prompt = JUDGE_CONSISTENCY_TEMPLATE.format(
                     context=format_context(messages),
@@ -354,6 +359,7 @@ async def process_conversation(
                 verdict, reason = parse_judge_response(judge_response)
 
                 if verdict == "pass":
+                    print(f"[{responder['name']}] Turn {turn_idx}: Consistency check PASSED", flush=True)
                     turn_result["adaptations"].append({
                         "attempt": adaptation_count,
                         "judge_verdict": verdict,
@@ -362,6 +368,7 @@ async def process_conversation(
                     final_response = current_response
                     break
                 elif verdict == "needs_adaptation":
+                    print(f"[{responder['name']}] Turn {turn_idx}: Needs adaptation ({reason}). Generating new response...", flush=True)
                     # Ask model to adapt the response
                     adapt_prompt = ADAPT_RESPONSE_TEMPLATE.format(
                         context=format_context(messages),
@@ -407,6 +414,7 @@ async def process_conversation(
         turn_result["final_response"] = final_response
 
         # Sanity verification by judge model after adaptation step
+        print(f"[{responder['name']}] Turn {turn_idx}: Running final sanity verification...", flush=True)
         sanity_prompt = SANITY_VERIFICATION_TEMPLATE.format(
             context=format_context(generated_history) if generated_history else "Start of conversation",
             user_message=user_message,
@@ -427,6 +435,7 @@ async def process_conversation(
             }
         else:
             sanity_verdict, sanity_reason = parse_judge_response(sanity_response)
+            print(f"[{responder['name']}] Turn {turn_idx}: Sanity verification verdict: {sanity_verdict}", flush=True)
             turn_result["sanity_check"] = {
                 "status": "success",
                 "verdict": sanity_verdict,
@@ -513,7 +522,7 @@ async def process_dataset(config: dict) -> list[dict]:
     semaphore = asyncio.Semaphore(concurrency)
 
     connector = aiohttp.TCPConnector(limit=concurrency * 2)
-    timeout = aiohttp.ClientTimeout(total=120)
+    timeout = aiohttp.ClientTimeout(total=600)  # Increased timeout from 120 to 600 seconds
 
     results = []
     last_checkpoint = 0
