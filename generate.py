@@ -7,6 +7,7 @@ import json
 import random
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 import aiohttp
 import yaml
@@ -89,8 +90,14 @@ Only output the JSON, nothing else."""
 
 def load_config(config_path: str) -> dict:
     """Load configuration from YAML file."""
+    load_dotenv()  # Load environment variables from .env file if present
+    import os
     with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+        content = f.read()
+        # Simple env var substitution for ${CSCS_SERVING_API} or ENV=CSCS_SERVING_API
+        api_key = os.environ.get("CSCS_SERVING_API", "")
+        content = content.replace("ENV=CSCS_SERVING_API", f'"{api_key}"')
+        return yaml.safe_load(content)
 
 
 def extract_conversation_turns(conversation: list[dict]) -> list[dict]:

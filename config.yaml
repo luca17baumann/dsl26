@@ -3,23 +3,23 @@
 # Responder models - one is randomly sampled per request
 responders:
   - name: "model-a"
-    base_url: "http://172.28.32.80:30000"
-    api_key: "EMPTY"
-    model: "zai-org/GLM-4.6"
+    base_url: "https://api.swissai.cscs.ch/v1"
+    api_key: ENV=CSCS_SERVING_API
+    model: "zai-org/GLM-4.7-Flash" #"zai-org/GLM-4.6"
   - name: "model-b"
-    base_url: "http://172.28.32.52:30000"
-    api_key: "EMPTY"
-    model: "openai/gpt-oss-120b"
+    base_url: "https://api.swissai.cscs.ch/v1"
+    api_key: ENV=CSCS_SERVING_API
+    model: "MiniMaxAI/MiniMax-M2-ofJR" #"openai/gpt-oss-120b"
   - name: "model-c"
-    base_url: "http://172.28.32.200:30000"
-    api_key: "EMPTY"
-    model: "deepseek-ai/DeepSeek-V3.1"
+    base_url: "https://api.swissai.cscs.ch/v1"
+    api_key: ENV=CSCS_SERVING_API
+    model: "meta-llama/Llama-3.3-70B-Instruct" #"deepseek-ai/DeepSeek-V3.1"
 
 # Judge model - evaluates if response makes sense
 judge:
-  base_url: "http://172.28.33.20:30000"
-  api_key: "EMPTY"
-  model: "Qwen/Qwen3-235B-A22B-Instruct-2507"
+  base_url: "https://api.swissai.cscs.ch/v1"
+  api_key: ENV=CSCS_SERVING_API
+  model: "codellama/CodeLlama-70b-Instruct-hf" #"Qwen/Qwen3-235B-A22B-Instruct-2507"
 
 # Generation parameters
 generation:
