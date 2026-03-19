@@ -9,17 +9,17 @@ responders:
   - name: "model-b"
     base_url: "https://api.swissai.cscs.ch/v1"
     api_key: ENV=CSCS_SERVING_API
-    model: "zai-org/GLM-4.7-Flash" #"openai/gpt-oss-120b"
+    model: "meta-llama/Llama-Guard-4-12B" #"openai/gpt-oss-120b"
   - name: "model-c"
     base_url: "https://api.swissai.cscs.ch/v1"
     api_key: ENV=CSCS_SERVING_API
-    model: "zai-org/GLM-4.7-Flash" #"deepseek-ai/DeepSeek-V3.1"
+    model: "meta-llama/Llama-3.3-70B-Instruct" #"deepseek-ai/DeepSeek-V3.1"
 
 # Judge model - evaluates if response makes sense
 judge:
   base_url: "https://api.swissai.cscs.ch/v1"
   api_key: ENV=CSCS_SERVING_API
-  model: "zai-org/GLM-4.7-Flash" #"Qwen/Qwen3-235B-A22B-Instruct-2507"
+  model: "cais/HarmBench-Llama-2-13b-cls" #"Qwen/Qwen3-235B-A22B-Instruct-2507"
 
 # Generation parameters
 generation:
