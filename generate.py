@@ -13,6 +13,7 @@ import aiohttp
 import yaml
 from datasets import load_dataset
 from tqdm.asyncio import tqdm as tqdm_asyncio
+import os
 
 
 # Track if we've printed the first error details (per endpoint type)
@@ -91,7 +92,6 @@ Only output the JSON, nothing else."""
 def load_config(config_path: str) -> dict:
     """Load configuration from YAML file."""
     load_dotenv()  # Load environment variables from .env file if present
-    import os
     with open(config_path, "r") as f:
         content = f.read()
         # Simple env var substitution for ${CSCS_SERVING_API} or ENV=CSCS_SERVING_API
@@ -121,7 +121,6 @@ def build_url(base_url: str) -> str:
 
 async def call_api(
     session: aiohttp.ClientSession,
-    semaphore: asyncio.Semaphore,
     api_config: dict,
     gen_config: dict,
     messages: list[dict],
@@ -146,41 +145,40 @@ async def call_api(
 
     first_error_printed = _first_judge_error_printed if is_judge else _first_responder_error_printed
 
-    async with semaphore:
-        try:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    response_text = result["choices"][0]["message"]["content"]
-                    return response_text, None
-                else:
-                    error_text = await resp.text()
-                    error_msg = f"HTTP {resp.status}: {error_text}"
+    try:
+        async with session.post(url, headers=headers, json=payload) as resp:
+            if resp.status == 200:
+                result = await resp.json()
+                response_text = result["choices"][0]["message"]["content"]
+                return response_text, None
+            else:
+                error_text = await resp.text()
+                error_msg = f"HTTP {resp.status}: {error_text}"
 
-                    if not first_error_printed:
-                        if is_judge:
-                            _first_judge_error_printed = True
-                        else:
-                            _first_responder_error_printed = True
-                        print(f"\n[{error_prefix} ERROR] URL: {url}", file=sys.stderr)
-                        print(f"[{error_prefix} ERROR] Status: {resp.status}", file=sys.stderr)
-                        print(f"[{error_prefix} ERROR] Headers: {dict(resp.headers)}", file=sys.stderr)
-                        print(f"[{error_prefix} ERROR] Response body:\n{error_text}", file=sys.stderr)
-                        print(f"[{error_prefix} ERROR] Request payload:\n{json.dumps(payload, indent=2)}", file=sys.stderr)
+                if not first_error_printed:
+                    if is_judge:
+                        _first_judge_error_printed = True
+                    else:
+                        _first_responder_error_printed = True
+                    print(f"\n[{error_prefix} ERROR] URL: {url}", file=sys.stderr)
+                    print(f"[{error_prefix} ERROR] Status: {resp.status}", file=sys.stderr)
+                    print(f"[{error_prefix} ERROR] Headers: {dict(resp.headers)}", file=sys.stderr)
+                    print(f"[{error_prefix} ERROR] Response body:\n{error_text}", file=sys.stderr)
+                    print(f"[{error_prefix} ERROR] Request payload:\n{json.dumps(payload, indent=2)}", file=sys.stderr)
 
-                    return None, error_msg
-        except Exception as e:
-            error_msg = f"{type(e).__name__}: {str(e)}"
+                return None, error_msg
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {str(e)}"
 
-            if not first_error_printed:
-                if is_judge:
-                    _first_judge_error_printed = True
-                else:
-                    _first_responder_error_printed = True
-                print(f"\n[{error_prefix} ERROR] URL: {url}", file=sys.stderr)
-                print(f"[{error_prefix} ERROR] Exception: {error_msg}", file=sys.stderr)
+        if not first_error_printed:
+            if is_judge:
+                _first_judge_error_printed = True
+            else:
+                _first_responder_error_printed = True
+            print(f"\n[{error_prefix} ERROR] URL: {url}", file=sys.stderr)
+            print(f"[{error_prefix} ERROR] Exception: {error_msg}", file=sys.stderr)
 
-            return None, error_msg
+        return None, error_msg
 
 
 def format_context(messages: list[dict]) -> str:
@@ -213,7 +211,6 @@ def parse_judge_response(judge_response: str | None) -> tuple[str, str]:
 
 async def process_conversation(
     session: aiohttp.ClientSession,
-    semaphore: asyncio.Semaphore,
     conversation: list[dict],
     config: dict,
     sample_id: int,
@@ -288,14 +285,14 @@ async def process_conversation(
         retry_count = 0
 
         while response_text is None and retry_count < max_retries:
-            print(f"[{responder['name']}] Turn {turn_idx}: Generating response (attempt {retry_count + 1})...", flush=True)
+            #print(f"[{responder['name']}] Turn {turn_idx}: Generating response (attempt {retry_count + 1})...", flush=True)
             response_text, response_error = await call_api(
-                session, semaphore, responder, gen_config, messages,
+                session, responder, gen_config, messages,
                 error_prefix=f"RESPONDER:{responder['name']}",
                 is_judge=False,
             )
             if response_text is None:
-                print(f"[{responder['name']}] Error: {response_error}. Retrying...", flush=True)
+                #print(f"[{responder['name']}] Error: {response_error}. Retrying...", flush=True)
                 retry_count += 1
             else:
                 print(f"[{responder['name']}] Turn {turn_idx}: Generation successful! Length: {len(response_text)} chars", flush=True)
@@ -333,7 +330,7 @@ async def process_conversation(
             adaptation_count = 0
 
             while adaptation_count < max_adaptations:
-                print(f"[{responder['name']}] Turn {turn_idx}: Running judge consistency check...", flush=True)
+                # print(f"[{responder['name']}] Turn {turn_idx}: Running judge consistency check...", flush=True)
                 # Check if response fits with next user message
                 judge_prompt = JUDGE_CONSISTENCY_TEMPLATE.format(
                     context=format_context(messages),
@@ -343,7 +340,7 @@ async def process_conversation(
                 judge_messages = [{"role": "user", "content": judge_prompt}]
                 # Use responder model for consistency check (self-evaluation)
                 judge_response, judge_error = await call_api(
-                    session, semaphore, responder, adaptation_gen_config, judge_messages,
+                    session, responder, adaptation_gen_config, judge_messages,
                     error_prefix=f"CONSISTENCY:{responder['name']}",
                     is_judge=False,
                 )
@@ -359,7 +356,7 @@ async def process_conversation(
                 verdict, reason = parse_judge_response(judge_response)
 
                 if verdict == "pass":
-                    print(f"[{responder['name']}] Turn {turn_idx}: Consistency check PASSED", flush=True)
+                    # print(f"[{responder['name']}] Turn {turn_idx}: Consistency check PASSED", flush=True)
                     turn_result["adaptations"].append({
                         "attempt": adaptation_count,
                         "judge_verdict": verdict,
@@ -368,7 +365,7 @@ async def process_conversation(
                     final_response = current_response
                     break
                 elif verdict == "needs_adaptation":
-                    print(f"[{responder['name']}] Turn {turn_idx}: Needs adaptation ({reason}). Generating new response...", flush=True)
+                    # print(f"[{responder['name']}] Turn {turn_idx}: Needs adaptation ({reason}). Generating new response...", flush=True)
                     # Ask model to adapt the response
                     adapt_prompt = ADAPT_RESPONSE_TEMPLATE.format(
                         context=format_context(messages),
@@ -378,7 +375,7 @@ async def process_conversation(
                     )
                     adapt_messages = [{"role": "user", "content": adapt_prompt}]
                     adapted_response, adapt_error = await call_api(
-                        session, semaphore, responder, adaptation_gen_config, adapt_messages,
+                        session, responder, adaptation_gen_config, adapt_messages,
                         error_prefix=f"ADAPT:{responder['name']}",
                         is_judge=False,
                     )
@@ -414,7 +411,7 @@ async def process_conversation(
         turn_result["final_response"] = final_response
 
         # Sanity verification by judge model after adaptation step
-        print(f"[{responder['name']}] Turn {turn_idx}: Running final sanity verification...", flush=True)
+        #print(f"[{responder['name']}] Turn {turn_idx}: Running final sanity verification...", flush=True)
         sanity_prompt = SANITY_VERIFICATION_TEMPLATE.format(
             context=format_context(generated_history) if generated_history else "Start of conversation",
             user_message=user_message,
@@ -422,7 +419,7 @@ async def process_conversation(
         )
         sanity_messages = [{"role": "user", "content": sanity_prompt}]
         sanity_response, sanity_error = await call_api(
-            session, semaphore, judge_config, judge_gen_config, sanity_messages,
+            session, judge_config, judge_gen_config, sanity_messages,
             error_prefix="SANITY_JUDGE",
             is_judge=True,
         )
@@ -435,7 +432,7 @@ async def process_conversation(
             }
         else:
             sanity_verdict, sanity_reason = parse_judge_response(sanity_response)
-            print(f"[{responder['name']}] Turn {turn_idx}: Sanity verification verdict: {sanity_verdict}", flush=True)
+            # print(f"[{responder['name']}] Turn {turn_idx}: Sanity verification verdict: {sanity_verdict}", flush=True)
             turn_result["sanity_check"] = {
                 "status": "success",
                 "verdict": sanity_verdict,
@@ -467,11 +464,54 @@ async def process_conversation(
     return result
 
 
-def save_checkpoint(results: list[dict], output_path: Path) -> None:
-    """Save checkpoint to JSONL file."""
-    with open(output_path, "w", encoding="utf-8") as f:
-        for result in results:
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
+def append_checkpoint(result: dict, output_path: Path) -> None:
+    """Append a single completed result to the JSONL file."""
+    with open(output_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(result, ensure_ascii=False) + "\n")
+            
+            
+def is_valid_and_short(item):
+    """Filters out empty conversations AND keeps user prompts <= 1000 words."""
+    conversation = item.get("conversation", [])
+    
+    # 1. Filter out completely empty conversations
+    if not conversation:
+        return False
+        
+    # Extract user messages, ensuring they are strings
+    user_messages = [
+        msg["content"] for msg in conversation 
+        if msg.get("role") == "user" and isinstance(msg.get("content"), str)
+    ]
+    
+    # 2. Filter out conversations that don't have any user turns
+    if not user_messages:
+        return False
+    
+    # 3. Filter out conversations with more than 3 user turns
+    if len(user_messages) > 3:
+        return False
+        
+    # Calculate total words
+    total_words = sum(len(msg.split()) for msg in user_messages)
+    
+    # 3. Ensure the word count is greater than 0 AND less than or equal to 1000
+    return 0 < total_words <= 1000
+
+
+def get_processed_ids(output_path: Path) -> set[int]:
+    """Reads the output JSONL file and returns a set of already processed sample IDs."""
+    processed_ids = set()
+    if output_path.exists():
+        with open(output_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                    if "id" in data:
+                        processed_ids.add(data["id"])
+                except json.JSONDecodeError:
+                    continue  # Skip corrupted lines if the script crashed mid-write
+    return processed_ids
 
 
 async def process_dataset(config: dict) -> list[dict]:
@@ -485,17 +525,26 @@ async def process_dataset(config: dict) -> list[dict]:
     random.seed(seed)
 
     # Get checkpoint settings
-    save_every = output_config.get("save_every", 100)
     output_path = Path(output_config["path"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    processed_ids = get_processed_ids(output_path)
+    if processed_ids:
+        print(f"Found {len(processed_ids)} already processed conversations. Resuming where we left off...")
 
     # Load dataset
     print(f"Loading dataset: {dataset_config['name']}...")
     dataset = load_dataset(
         dataset_config["name"],
         split=dataset_config["split"],
-        trust_remote_code=True,
     )
+    
+    print(f"Original dataset size: {len(dataset)}")
+    
+    num_cores = os.cpu_count() or 1
+    dataset = dataset.filter(is_valid_and_short, num_proc=num_cores)
+
+    print(f"Filtered dataset size: {len(dataset)}")
 
     # Sample from dataset
     num_samples = min(dataset_config["num_samples"], len(dataset))
@@ -504,11 +553,14 @@ async def process_dataset(config: dict) -> list[dict]:
     # Extract conversations
     conversations = []
     for idx in indices:
+        if idx in processed_ids:
+            continue  # Skip already processed conversations
+        
         conversation = dataset[idx].get("conversation", [])
         if conversation:
             conversations.append((idx, conversation))
 
-    print(f"Extracted {len(conversations)} valid conversations from {num_samples} samples")
+    print(f"Extracted {len(conversations)} un-processed conversations out of the {num_samples} total sample. {len(processed_ids)} conversations were already processed and will be skipped.")
 
     # Count total turns for progress reporting
     total_turns = sum(
@@ -528,8 +580,13 @@ async def process_dataset(config: dict) -> list[dict]:
     last_checkpoint = 0
 
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        # NEW: Wrapper forces the whole conversation to wait in line
+        async def process_with_limit(idx, conv):
+            async with semaphore:
+                return await process_conversation(session, conv, config, idx)
+        
         tasks = [
-            asyncio.create_task(process_conversation(session, semaphore, conv, config, idx))
+            asyncio.create_task(process_with_limit(idx, conv))
             for idx, conv in conversations
         ]
 
@@ -537,16 +594,12 @@ async def process_dataset(config: dict) -> list[dict]:
             for coro in asyncio.as_completed(tasks):
                 result = await coro
                 results.append(result)
+                
+                # Append to file immediately instead of rewriting the whole file
+                append_checkpoint(result, output_path)
+                
                 pbar.update(1)
-
-                # Save checkpoint every save_every results
-                if len(results) - last_checkpoint >= save_every:
-                    save_checkpoint(results, output_path)
-                    last_checkpoint = len(results)
-                    pbar.set_postfix({"checkpointed": len(results)})
-
-    # Final save
-    save_checkpoint(results, output_path)
+                pbar.set_postfix({"completed": len(results)})
 
     return results
 
@@ -728,7 +781,6 @@ def main():
     print(f"  Max retries: {max_retries}")
     print(f"  Max conv turns: {max_conv_turns if max_conv_turns > 0 else 'no limit'}")
     print(f"  Output: {config['output']['path']}")
-    print(f"  Save every: {config['output'].get('save_every', 100)} conversations")
     print()
 
     # Run async processing

@@ -56,5 +56,4 @@ processing:
 
 # Output settings
 output:
-  path: "outputs/responses_29_01.jsonl"
-  save_every: 1000  # save checkpoint every N responses
+  path: "outputs/responses.jsonl"
